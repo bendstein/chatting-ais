@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "properties": {
+    "sender": {
+      "type": "string"
+    },
+    "message": {
+      "type": "string"
+    },
+    "target": {
+      "type": "string"
+    },
+    "whisper": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [ "sender", "message", "target", "whisper" ],
+  "additionalProperties": false
+}
