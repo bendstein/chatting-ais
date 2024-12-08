@@ -87,6 +87,9 @@ public class ConsoleGroupChat
         //and returning control to the user
         CancellationTokenSource current_step_cancellation = new();
 
+        //Cancellation token for audio
+        CancellationTokenSource audio_cancellation = new();
+
         //Explicit target. Start with user
         string? target = user_agent.Id;
 
@@ -172,48 +175,63 @@ public class ConsoleGroupChat
                         speech_task = null;
                     }
 
-                    //If agent is audio-capable, and speech is enabled, start speaking
-                    if(config.EnableAudio && response.Agent is IAudioAgent audio_agent)
+                    //If agent is audio-capable, message isn't empty, and speech is enabled, start speaking
+                    if(config.EnableAudio && !string.IsNullOrWhiteSpace(response.Message.Message) && response.Agent is IAudioAgent audio_agent)
                     {
+                        var audio_joined_cancellation = CancellationTokenSource.CreateLinkedTokenSource(token, audio_cancellation.Token);
+
                         speech_task = Task.Run(async () =>
                         {
-                            //Get audio corresponding to response message
-                            var speech = await audio_agent.SpeakAsync(response.Message, token);
-
-                            //Play to audio device
-                            using var audio = new Mp3FileReader(speech);
-                            using var wave_out = new WaveOutEvent();
-
-                            //Wait handle for audio to complete
-                            ManualResetEvent audio_complete = new(false);
-
-                            wave_out.PlaybackStopped += (sender, e) =>
-                            {
-                                //Trigger wait handle indicating audio completion
-                                audio_complete.Set();
-                            };
-
-                            wave_out.Init(audio);
-                            wave_out.Play();
-
-                            //When cancellation token is triggered, stop audio
-                            CancellationTokenRegistration ctr = joined_cancellation.Token.Register(() =>
-                            {
-                                wave_out.Stop();
-                            });
-
                             try
                             {
-                                //Wait for audio to complete
-                                await audio_complete.WaitOneAsync(token);
-                            }
-                            finally
-                            {
-                                //Unregister callback from cancellation token
-                                ctr.Unregister();
-                            }
+                                //Get audio corresponding to response message
+                                var speech = await audio_agent.SpeakAsync(response.Message, joined_cancellation.Token);
 
-                        }, token);
+                                //Play to audio device
+                                using var audio = new Mp3FileReader(speech);
+                                using var wave_out = new WaveOutEvent();
+
+                                //Wait handle for audio to complete
+                                ManualResetEvent audio_complete = new(false);
+
+                                //When audio output is complete, trigger wait handle
+                                wave_out.PlaybackStopped += (sender, e) => audio_complete.Set();
+
+                                wave_out.Init(audio);
+                                wave_out.Play();
+
+                                //When cancellation token is triggered, stop audio
+                                CancellationTokenRegistration ctr = joined_cancellation.Token.Register(() => wave_out.Stop());
+
+                                try
+                                {
+                                    //Wait for audio to complete
+                                    await audio_complete.WaitOneAsync(joined_cancellation.Token);
+                                }
+                                finally
+                                {
+                                    //Unregister callback from cancellation token
+                                    ctr.Unregister();
+                                }
+                            }
+                            catch(Exception e) when(e is OperationCanceledException or TaskCanceledException)
+                            {
+                                //Propagate cancelltion from main cancellation token
+                                if(token.IsCancellationRequested)
+                                {
+                                    throw;
+                                }
+
+                                //Cancel audio only
+                                if(audio_cancellation.IsCancellationRequested)
+                                {
+                                    lock(mutex)
+                                    {
+                                        audio_cancellation = new();
+                                    }
+                                }
+                            }
+                        }, audio_joined_cancellation.Token);
                     }
 
                     //Print message to console
@@ -239,8 +257,9 @@ public class ConsoleGroupChat
                 {
                     throw;
                 }
+
                 //Cancel current step only, and return control to the user
-                else if(current_step_cancellation.IsCancellationRequested)
+                if(current_step_cancellation.IsCancellationRequested)
                 {
                     lock(mutex)
                     {
@@ -248,10 +267,14 @@ public class ConsoleGroupChat
                         target = user_agent.Id;
                     }
                 }
-                //Shouldn't happen
-                else
+                
+                //Cancel audio only
+                if(audio_cancellation.IsCancellationRequested)
                 {
-                    throw;
+                    lock(mutex)
+                    {
+                        audio_cancellation = new();
+                    }
                 }
             }
         }
@@ -278,7 +301,7 @@ public class ConsoleGroupChat
         /// <summary>
         /// When in auto-step mode, wait for this timespan for next step
         /// </summary>
-        private TimeSpan? cooldown = cooldown;
+        private readonly TimeSpan? cooldown = cooldown;
 
         /// <summary>
         /// Mutex for <see cref="step_mode"/> and <see cref="step_mode_change_flag"/>

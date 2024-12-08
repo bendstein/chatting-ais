@@ -9,24 +9,48 @@
             PARAM_NAME_PFX = "--",
             ABBREVIATED_NAME_PFX = "-";
 
+        /// <summary>
+        /// Specify which option each positional parameter corresponds to
+        /// </summary>
         private List<string> positional_parameter_names = positional_parameter_names ?? [];
 
+        /// <summary>
+        /// Specify which parameters are allowed as flags
+        /// </summary>
         private HashSet<string> allowed_flags = allowed_flags ?? [];
 
+        /// <summary>
+        /// Specify single-character abbreviations for parameters
+        /// </summary>
         private Dictionary<char, string> abbreviated_parameter_names = abbreviated_parameter_names ?? [];
 
+        /// <summary>
+        /// Set positional parameter names
+        /// </summary>
+        /// <param name="positional_parameter_names">The names of each positional parameter</param>
+        /// <returns>This ArgumentParser, for chaining</returns>
         public ArgumentParser WithPositionalParameters(params string[] positional_parameter_names)
         {
             this.positional_parameter_names = [.. positional_parameter_names];
             return this;
         }
 
+        /// <summary>
+        /// Set allowed flag parameters
+        /// </summary>
+        /// <param name="flags">Parameter names that are allowed to be used as flags</param>
+        /// <returns>This ArgumentParser, for chaining</returns>
         public ArgumentParser WithAllowedFlags(params string[] flags)
         {
             this.allowed_flags = [.. flags];
             return this;
         }
 
+        /// <summary>
+        /// Set abbreviated parameters
+        /// </summary>
+        /// <param name="abbreviations">Mapping from single-character abbreviations to their full parameter name</param>
+        /// <returns>This ArgumentParser, for chaining</returns>
         public ArgumentParser WithAbbreviations(params (char abbreviated_name, string full_name)[] abbreviations)
         {
             abbreviated_parameter_names = abbreviations.ToDictionary(
@@ -36,6 +60,11 @@
             return this;
         }
 
+        /// <summary>
+        /// Add to the list of allowed flags
+        /// </summary>
+        /// <param name="flags">Additional allowed flags to add</param>
+        /// <returns>This ArgumentParser, for chaining</returns>
         public ArgumentParser AddAllowedFlags(params string[] flags)
         {
             foreach (var flag in flags)
@@ -44,6 +73,11 @@
             return this;
         }
 
+        /// <summary>
+        /// Remove from the list of allowed flags
+        /// </summary>
+        /// <param name="flags">Flags to remove</param>
+        /// <returns>This ArgumentParser, for chaining</returns>
         public ArgumentParser RemoveAllowedFlags(params string[] flags)
         {
             foreach (var flag in flags)
@@ -52,6 +86,11 @@
             return this;
         }
 
+        /// <summary>
+        /// Add to the list of parameter abbreviations
+        /// </summary>
+        /// <param name="abbreviations">Mappings to add, from single-character abbreviations to their full parameter name</param>
+        /// <returns>This ArgumentParser, for chaining</returns>
         public ArgumentParser AddAbbreviation(params (char abbreviated_name, string full_name)[] abbreviations)
         {
             foreach (var (abbreviated_name, full_name) in abbreviations)
@@ -60,6 +99,11 @@
             return this;
         }
 
+        /// <summary>
+        /// Remove a parameter abbreviation
+        /// </summary>
+        /// <param name="abbreviations">Abbreviations to remove</param>
+        /// <returns>This ArgumentParser, for chaining</returns>
         public ArgumentParser RemoveAbbreviation(params char[] abbreviations)
         {
             foreach (var abbreviated_name in abbreviations)
@@ -68,6 +112,13 @@
             return this;
         }
 
+        /// <summary>
+        /// Parse the given command line arguments into a mapping from
+        /// parameter name to value
+        /// </summary>
+        /// <param name="args">The command line arguments to parse</param>
+        /// <returns>A mapping of parameter names to their values</returns>
+        /// <exception cref="ArgumentException"></exception>
         public Dictionary<string, string?> ParseArguments(params string[] args)
         {
             Dictionary<string, string?> arguments = [];

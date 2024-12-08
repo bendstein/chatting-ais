@@ -115,11 +115,11 @@ namespace ChattingAIs.Common
                     var profile = xagent.Element("Profile")?.Value ?? string.Empty;
 
                     if(string.IsNullOrWhiteSpace(profile))
-                        return name;
-                    return $"{name}: {profile.Trim()}";
+                        return (name, string.Empty);
+                    return (name, $"{name}: {profile.Trim()}");
                 })
-                .Where(desc => !string.IsNullOrWhiteSpace(desc))
-                .ToList();
+                .Where(pair => !string.IsNullOrWhiteSpace(pair.Item2))
+                .ToDictionary(pair => pair.name, pair => pair.Item2);
 
             //Get moderator names
             var moderator_names = xagents
@@ -187,12 +187,14 @@ namespace ChattingAIs.Common
                                     break;
                                     case "agent-list":
                                     {
-                                        prompt_builder.Append(string.Join("\r\n    ", agent_descriptions.Select(d => $"- {d}")));
+                                        prompt_builder.Append(string.Join("\r\n    ", agent_descriptions
+                                            .Where(pair => pair.Key != name)
+                                            .Select(pair => $"- {pair.Value}")));
                                     }
                                     break;
                                     case "moderator-name":
                                     {
-                                        prompt_builder.Append(string.Join(", ", moderator_names));
+                                        prompt_builder.Append(string.Join(", ", moderator_names.Select(n => $"'{n}'")));
                                     }
                                     break;
                                     default:
