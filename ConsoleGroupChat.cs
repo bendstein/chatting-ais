@@ -156,10 +156,14 @@ public class ConsoleGroupChat
                 //Joined cancellation token for current step
                 var joined_cancellation = CancellationTokenSource.CreateLinkedTokenSource(token, current_step_cancellation.Token);
 
+                IAgent? agent = null;
+
                 try
                 {
                     //Get message from agent
                     var response = await group_chat.StepAsync(target, joined_cancellation.Token);
+
+                    agent = response.Agent;
 
                     //Wait for current speaker to finish speaking.
                     if(speech_task is not null)
@@ -192,8 +196,23 @@ public class ConsoleGroupChat
                             wave_out.Init(audio);
                             wave_out.Play();
 
-                            //Wait for audio to complete
-                            await audio_complete.WaitOneAsync(token);
+                            //When cancellation token is triggered, stop audio
+                            CancellationTokenRegistration ctr = joined_cancellation.Token.Register(() =>
+                            {
+                                wave_out.Stop();
+                            });
+
+                            try
+                            {
+                                //Wait for audio to complete
+                                await audio_complete.WaitOneAsync(token);
+                            }
+                            finally
+                            {
+                                //Unregister callback from cancellation token
+                                ctr.Unregister();
+                            }
+
                         }, token);
                     }
 
@@ -209,8 +228,9 @@ public class ConsoleGroupChat
                     }
                 }
 
-                //Wait for next step
-                await stepper.StepAsync(joined_cancellation.Token);
+                //Wait for next step, except for user
+                if(agent is null || agent is not UserAgent)
+                    await stepper.StepAsync(joined_cancellation.Token);
             }
             catch(Exception e) when(e is OperationCanceledException or TaskCanceledException) 
             { 
