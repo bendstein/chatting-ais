@@ -1,4 +1,6 @@
-﻿namespace ChattingAIs.Common;
+﻿using NAudio.Wave;
+
+namespace ChattingAIs.Common;
 
 public static class Extensions
 {
@@ -7,10 +9,10 @@ public static class Extensions
     /// See: <a href="https://stackoverflow.com/a/68632819">https://stackoverflow.com/a/68632819</a>
     /// </summary>
     /// <param name="wait_handle"></param>
+    /// <param name="timeout"></param>
     /// <param name="token"></param>
-    /// <param name="timeoutMilliseconds"></param>
     /// <returns></returns>
-    public static Task WaitOneAsync(this WaitHandle wait_handle, CancellationToken token, TimeSpan? timeout = null)
+    public static Task WaitOneAsync(this WaitHandle wait_handle, CancellationToken token = default, TimeSpan? timeout = null)
     {
         ArgumentNullException.ThrowIfNull(wait_handle);
 
@@ -46,5 +48,27 @@ public static class Extensions
         }, CancellationToken.None);
 
         return task;
+    }
+
+    public static async Task PlayAsync(this IWaveProvider source, CancellationToken token = default)
+    {
+        //Create device
+        using var wave_out = new WaveOutEvent();
+
+        //Attach event on audio output completion to
+        //trigger wait handle
+        ManualResetEvent audio_complete = new(false);
+        wave_out.PlaybackStopped += (_, _) => audio_complete.Set();
+
+        //Init device with audio source and start playback
+        wave_out.Init(source);
+
+        wave_out.Play();
+
+        //When cancellation token is triggered, stop audio
+        using CancellationTokenRegistration ctr = token.Register(wave_out.Stop);
+
+        //Wait for audio to complete
+        await audio_complete.WaitOneAsync(token);
     }
 }

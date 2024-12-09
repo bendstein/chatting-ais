@@ -27,15 +27,9 @@ public class ConsoleGroupChat
     /// </summary>
     private readonly UserAgent user_agent;
 
-    /// <summary>
-    /// OpenAI client
-    /// </summary>
-    private readonly OpenAIClient client;
-
-    public ConsoleGroupChat(GroupChat group_chat, OpenAIClient client, Config config)
+    public ConsoleGroupChat(GroupChat group_chat, Config config)
     {
         this.group_chat = group_chat;
-        this.client = client;
         this.config = config;
         user_agent = group_chat.Agents.Values.Select(a => a as UserAgent)
             .Where(a => a is not null)
@@ -61,8 +55,8 @@ public class ConsoleGroupChat
             You, {user_agent.Id}, are the moderator of a conversation between {agents.Count} speakers.
 
             Controls:
-              - <Esc>      : Cancel current step of the conversation, and return control to the user.
-              - <Enter>    : Toggle conversation between 'Auto' and 'Manual' mode.
+              - <Esc>     : Cancel current step of the conversation, and return control to the user.
+              - <Enter>   : Toggle conversation between 'Auto' and 'Manual' mode.
                 - 'Auto'  : Conversation flows automatically, with a brief delay between each step.
                 - 'Manual': Conversation requires user keypress to continue flow.
               - <Space>   : If conversation is paused in 'Manual' mode, continue to next step of the conversation.
@@ -189,30 +183,7 @@ public class ConsoleGroupChat
 
                                 //Play to audio device
                                 using var audio = new Mp3FileReader(speech);
-                                using var wave_out = new WaveOutEvent();
-
-                                //Wait handle for audio to complete
-                                ManualResetEvent audio_complete = new(false);
-
-                                //When audio output is complete, trigger wait handle
-                                wave_out.PlaybackStopped += (sender, e) => audio_complete.Set();
-
-                                wave_out.Init(audio);
-                                wave_out.Play();
-
-                                //When cancellation token is triggered, stop audio
-                                CancellationTokenRegistration ctr = joined_cancellation.Token.Register(() => wave_out.Stop());
-
-                                try
-                                {
-                                    //Wait for audio to complete
-                                    await audio_complete.WaitOneAsync(joined_cancellation.Token);
-                                }
-                                finally
-                                {
-                                    //Unregister callback from cancellation token
-                                    ctr.Unregister();
-                                }
+                                await audio.PlayAsync(joined_cancellation.Token);
                             }
                             catch(Exception e) when(e is OperationCanceledException or TaskCanceledException)
                             {

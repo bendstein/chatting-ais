@@ -1,6 +1,9 @@
 ﻿using ChattingAIs.Common;
+using NAudio.Wave;
 using OpenAI.Audio;
 using OpenAI.Chat;
+using System.Numerics;
+using System.Text;
 using System.Text.Json;
 
 namespace ChattingAIs.Agent;
@@ -61,13 +64,23 @@ public class UserAgent(string id) : IAgent
 
     public bool IsModerator { get; set; }
 
+    public string Profile => string.Empty;
+
     /// <summary>
     /// Whether <see cref="ChatAsync(AgentRequest, CancellationToken)"/> is
     /// currently executing for this agent
     /// </summary>
     public bool IsActive { get; private set; } = false;
 
-    public string Profile => string.Empty;
+    /// <summary>
+    /// Audio input device index
+    /// </summary>
+    public int LineIn { get; set; } = -2;
+
+    /// <summary>
+    /// OpenAI client of transcribing audio
+    /// </summary>
+    public AudioClient? TranscribeClient { get; set; }
 
     public async Task<AgentResponse> ChatAsync(AgentRequest request, CancellationToken token = default)
     {
@@ -75,10 +88,52 @@ public class UserAgent(string id) : IAgent
 
         try
         {
-            //Prompt user for their message
-            Console.Write($"{Id}, please enter your message: ");
+            //If any audio in devices, check if user would like to record audio
+            bool record_message = false;
 
-            var message = Console.ReadLine()?.Trim();
+            if(LineIn >= -1)
+            {
+                do
+                {
+                    Console.Write($"{Id}, record audio for transcribed message? ([y]/[n]): ");
+
+                    var record_message_choice = Console.ReadLine()?.Trim()?.ToUpper()?.FirstOrDefault();
+
+                    switch(record_message_choice)
+                    {
+                        case 'Y':
+                        {
+                            record_message = true;
+                        }
+                        break;
+                        case 'N':
+                        {
+                            record_message = false;
+                        }
+                        break;
+                        default:
+                        {
+                            Console.Error.WriteLine($"Invalid selection.");
+                        }
+                        continue;
+                    }
+                } while(false);
+            }
+
+            string? message = null;
+
+            if(record_message)
+            {
+                //Start recording
+                message = await RecordAudioAsync(token);
+                Console.WriteLine($"\r\n{message}");
+            }
+            else
+            {
+                //Prompt user for their message
+                Console.Write($"Please enter your message: ");
+                message = Console.ReadLine()?.Trim();
+            }
 
             token.ThrowIfCancellationRequested();
 
@@ -144,6 +199,133 @@ public class UserAgent(string id) : IAgent
         {
             IsActive = false;
         }
+    }
+
+    public async Task<string> RecordAudioAsync(CancellationToken token = default)
+    {
+        //Make sure OpenAI client is present
+        if(TranscribeClient == null)
+            throw new ChatException($"UserAgent isn't associated with an OpenAI AudioClient.");
+
+        bool recording_started = false;
+        bool recording_paused = true;
+        bool recording_complete = false;
+
+        //Write audio to memory stream
+        WaveFormat wave_fmt = new(44100, 32, 2);
+
+        await using var ms = new MemoryStream();
+        using var sr = new WaveFileWriter(ms, wave_fmt);
+
+        //Init audio device
+        using var wave_in = new WaveInEvent()
+        {
+            DeviceNumber = LineIn,
+            WaveFormat = wave_fmt
+        };
+
+        //New input audio input received
+        wave_in.DataAvailable += (_, e) =>
+        {
+            sr.Write(e.Buffer);
+        };
+
+        //Get initial position
+        var console_start = Console.GetCursorPosition();
+
+        //Clear line and write message
+        void Write(string message)
+        {
+            var console_position = Console.GetCursorPosition();
+
+            //Pad message with spaces
+            var padded = message.PadRight(console_position.Left - console_start.Left, ' ');
+
+            //Overwrite message
+            Console.SetCursorPosition(console_start.Left, console_start.Top);
+            Console.Write(padded);
+        }
+
+        Write("Press [space] to start recording audio, or [esc] to cancel: ");
+
+        //Control from console
+        await Task.Run(async () =>
+        {
+            //Keep reading keys until done
+            while(!recording_complete && !token.IsCancellationRequested)
+            {
+                if(Console.KeyAvailable)
+                {
+                    var key = Console.ReadKey(true);
+
+                    //Toggle recording on space
+                    if(key.Key == ConsoleKey.Spacebar)
+                    {
+                        //Restart recording
+                        if(recording_paused)
+                        {
+                            wave_in.StartRecording();
+                            await Task.Delay(TimeSpan.FromMilliseconds(wave_in.BufferMilliseconds));
+
+                            Write("Recording audio... Press [space] to stop or [esc] to finish: ");
+
+                            recording_started = true;
+                            recording_paused = false;
+                        }
+                        //Stop recording
+                        else
+                        {
+                            Write("Stopped recording. Press [space] to continue or [esc] to finish: ");
+
+                            recording_paused = true;
+                            wave_in.StopRecording();
+
+                            //Give buffer time to finish
+                            await Task.Delay(TimeSpan.FromMilliseconds(wave_in.BufferMilliseconds));
+                        }
+                    }
+                    //Finish recording on escape
+                    else if(key.Key == ConsoleKey.Escape)
+                    {
+                        //Stop recording
+                        if(!recording_paused)
+                        {
+                            Write("Finished recording.");
+
+                            recording_paused = true;
+                            wave_in.StopRecording();
+
+                            //Give buffer time to finish
+                            await Task.Delay(TimeSpan.FromMilliseconds(wave_in.BufferMilliseconds));
+                        }
+
+                        //Complete recording
+                        recording_complete = true;
+                    }
+                }
+
+                await Task.Delay(25);
+            }
+        }, token);
+
+        //If recording was never started, return empty string
+        if(!recording_started)
+            return string.Empty;
+
+        await sr.FlushAsync(token);
+
+        //Copy to new memory stream
+        using var new_ms = new MemoryStream(ms.ToArray());
+
+        //Transcribe audio
+        var result = await TranscribeClient.TranscribeAudioAsync(new_ms, $"voice.wav", new()
+        {
+            
+        }, token);
+
+        string message = result.Value.Text;
+
+        return message;
     }
 }
 
@@ -211,7 +393,8 @@ public class OpenAIAgent(string id) : IAgent, IAudioAgent
             //Don't include messages not for this user
             if(!IsModerator && message.Whisper.Length > 0)
             {
-                if(message.Sender == Id || message.Target == Id || message.Whisper.Contains(Id)) { }
+                if(message.Sender == Id || message.Target == Id || message.Whisper.Contains(Id))
+                { }
                 else
                 {
                     continue;
@@ -253,7 +436,7 @@ public class OpenAIAgent(string id) : IAgent, IAudioAgent
                             Message = deserialized
                         };
                     }
-                    catch(Exception e) when (e is not ChatException)
+                    catch(Exception e) when(e is not ChatException)
                     {
                         throw new ChatException($"Failed to deserialize message. {e.Message}", e);
                     }
@@ -298,7 +481,7 @@ public class OpenAIAgent(string id) : IAgent, IAudioAgent
         var voice = new GeneratedSpeechVoice(Utility.CoalesceString(VoiceId, Constants.OpenAI.VOICE_DFT));
 
         //Send message to speech client, and get the resulting binary stream
-        var speech_response = await SpeechClient.GenerateSpeechAsync(message.Message, voice, SpeechOptions?? new(), token);
+        var speech_response = await SpeechClient.GenerateSpeechAsync(message.Message, voice, SpeechOptions ?? new(), token);
 
         return speech_response.Value.ToStream();
     }

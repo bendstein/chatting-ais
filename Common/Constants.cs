@@ -22,6 +22,7 @@
             public const string
                 CHAT_MODEL = "gpt-4o",
                 SPEECH_MODEL = "tts-1",
+                TRANSCRIBE_MODEL = "whisper-1",
                 VOICE_DFT = "alloy";
         }
     }

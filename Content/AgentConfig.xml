@@ -20,7 +20,7 @@
     If you have something to add to the conversation, it should be specified in the "message" property. If you have nothing
     to add to the conversation, use an empty string for the value of the "message" property.
 
-    If your message is targeted at a specific participant, their name should be specified in the "target" property. If your message is a general
+    If your message is addressed toward a specific participant, their name should be specified in the "target" property. If your message is a general
     message, use an empty string for the value of the "target" property. Targeting a specific participant is not required, and ocassionally
     addressing everyone (which, again, is specified by an empty value of the "target" property) is encouraged.
 
@@ -37,8 +37,6 @@
     <Format format-type="agent-list"/>
 
     <Format format-type="moderator-name"/> is the moderator of this discussion. It is important that you never set a moderator as the "target" of your message.
-
-    Try not to let anyone feel too left out—if someone hasn't spoken in a while, make sure to give them a chance to speak.
     
     This is a description of your role. You should stick to it as close as possible:
   </SystemPrompt>
