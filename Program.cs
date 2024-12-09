@@ -47,33 +47,21 @@ AudioClient speech_client = client.GetAudioClient(Utility.CoalesceString(config[
 
 AudioClient transcribe_client = client.GetAudioClient(Utility.CoalesceString(config["OpenAI:TranscribeModel"], Constants.OpenAI.TRANSCRIBE_MODEL));
 
+bool audio_enabled = !bool.TryParse(config["Args:Disable-Speech"], out var disable_speech) || !disable_speech;
+
 //Get audio devices
-int line_in = int.TryParse(config["Args:Line-In"], out var li) ? li : -2;
-int line_out = int.TryParse(config["Args:Line-Out"], out var lo) ? lo : -2;
+int line_in = int.TryParse(config["Args:Line-In"], out var li) ? li : -3;
+int line_out = int.TryParse(config["Args:Line-Out"], out var lo) ? lo : -3;
 
-if(line_in < -1 && WaveInEvent.DeviceCount > 0)
+if(audio_enabled)
 {
-    Console.WriteLine($"Select audio input device:");
-    for(int i = -1; i < WaveInEvent.DeviceCount; i++)
-    {
-        Console.WriteLine($" - {i}: {WaveInEvent.GetCapabilities(i).ProductName}");
-    }
+    if(line_in < -2)
+        line_in = Utility.SelectDevice("Line In Device", (-1, WaveInEvent.DeviceCount),
+            i => WaveInEvent.GetCapabilities(i).ProductName, 0);
 
-    while(line_in < -1 || line_in >= WaveInEvent.DeviceCount)
-    {
-        Console.Write($"Choice: ");
-        string choice = Console.ReadLine()?? string.Empty;
-
-        if(int.TryParse(choice, out line_in)
-            && line_in >= -1 && line_in < WaveInEvent.DeviceCount)
-        {
-            break;
-        }
-        else
-        {
-            Console.Error.WriteLine($"Invalid selection {choice}.");
-        }
-    }
+    if(line_out < -2)
+        line_out = Utility.SelectDevice("Line Out Device", (-1, Utility.GetWaveOutDeviceCount()),
+            i => Utility.GetWaveOutCapabilities(i).ProductName, 0);
 }
 
 //Attach openai to agents
@@ -106,8 +94,9 @@ TimeSpan? cooldown = (double.TryParse(config["Settings:Cooldown"], out var cldn)
 var console_group_chat = new ConsoleGroupChat(group_chat, new()
 {
     Cooldown = cooldown,
-    EnableAudio = !bool.TryParse(config["Args:Disable-Speech"], out var disable_speech) || !disable_speech,
-    UserPollCooldown = TimeSpan.FromMilliseconds(25)
+    EnableAudio = audio_enabled,
+    AudioOut = line_out,
+    UserPollCooldown = TimeSpan.FromMilliseconds(25),
 });
 
 try

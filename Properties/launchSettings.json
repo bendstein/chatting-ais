@@ -2,7 +2,7 @@
   "profiles": {
     "ChattingAIs": {
       "commandName": "Project",
-      "commandLineArgs": "--line-in 0"
+      "commandLineArgs": "--line-in -3"
     }
   }
 }

@@ -1,5 +1,8 @@
 ﻿using ChattingAIs.Agent;
 using Microsoft.Extensions.Configuration;
+using NAudio.Wave;
+using NAudio;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Xml.Linq;
 using System.Xml.XPath;
@@ -258,6 +261,61 @@ namespace ChattingAIs.Common
             }
 
             return agents;
+        }
+
+        public static int SelectDevice(string name, (int i_0, int i_1) range, Func<int, string> get_device_name, int dft_device = 0)
+        {
+            var (i_0, i_1) = range;
+
+            if(i_1 <= i_0)
+                return i_0 - 1;
+
+            Console.WriteLine($"Select {name}:");
+            Console.WriteLine($" - {i_0 - 1}{((i_0 - 1) == dft_device ? " [default]" : "")}: None");
+            for(int i = i_0; i < i_1; i++)
+                Console.WriteLine($" - {i}{(i == dft_device ? " [default]" : "")}: {get_device_name(i)}");
+
+            while(true)
+            {
+                Console.Write($"Choice: ");
+                string choice = Console.ReadLine() ?? string.Empty;
+
+                if(string.IsNullOrWhiteSpace(choice))
+                {
+                    return dft_device;
+                }
+                else if(int.TryParse(choice, out var device)
+                    && device >= (i_0 - 1) && device < i_1)
+                {
+                    return device;
+                }
+                else
+                {
+                    Console.Error.WriteLine($"Invalid selection {choice}.");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Utility to match <see cref="WaveInEvent.DeviceCount"/> for WaveOut
+        /// </summary>
+        /// <returns></returns>
+        public static int GetWaveOutDeviceCount()
+        {
+            return WaveInterop.waveOutGetNumDevs();
+        }
+
+        /// <summary>
+        /// Utility to match <see cref="WaveInEvent.GetCapabilities(int)"/> for WaveOut
+        /// </summary>
+        /// <param name="devNumber"></param>
+        /// <returns></returns>
+        public static WaveOutCapabilities GetWaveOutCapabilities(int devNumber)
+        {
+            var caps = new WaveOutCapabilities();
+            int structSize = Marshal.SizeOf(caps);
+            MmException.Try(WaveInterop.waveOutGetDevCaps((nint)devNumber, out caps, structSize), "waveOutGetDevCaps");
+            return caps;
         }
     }
 }

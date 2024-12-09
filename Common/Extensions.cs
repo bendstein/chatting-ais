@@ -1,4 +1,6 @@
-﻿using NAudio.Wave;
+﻿using NAudio;
+using NAudio.Wave;
+using System.Runtime.InteropServices;
 
 namespace ChattingAIs.Common;
 
@@ -50,10 +52,13 @@ public static class Extensions
         return task;
     }
 
-    public static async Task PlayAsync(this IWaveProvider source, CancellationToken token = default)
+    public static async Task PlayAsync(this IWaveProvider source, int device = 0, CancellationToken token = default)
     {
         //Create device
-        using var wave_out = new WaveOutEvent();
+        using var wave_out = new WaveOutEvent()
+        {
+            DeviceNumber = device
+        };
 
         //Attach event on audio output completion to
         //trigger wait handle

@@ -170,7 +170,8 @@ public class ConsoleGroupChat
                     }
 
                     //If agent is audio-capable, message isn't empty, and speech is enabled, start speaking
-                    if(config.EnableAudio && !string.IsNullOrWhiteSpace(response.Message.Message) && response.Agent is IAudioAgent audio_agent)
+                    if(config.EnableAudio && config.AudioOut >= -1
+                        && !string.IsNullOrWhiteSpace(response.Message.Message) && response.Agent is IAudioAgent audio_agent)
                     {
                         var audio_joined_cancellation = CancellationTokenSource.CreateLinkedTokenSource(token, audio_cancellation.Token);
 
@@ -183,7 +184,7 @@ public class ConsoleGroupChat
 
                                 //Play to audio device
                                 using var audio = new Mp3FileReader(speech);
-                                await audio.PlayAsync(joined_cancellation.Token);
+                                await audio.PlayAsync(config.AudioOut, joined_cancellation.Token);
                             }
                             catch(Exception e) when(e is OperationCanceledException or TaskCanceledException)
                             {
@@ -571,6 +572,11 @@ public class ConsoleGroupChat
         /// Whether text-to-speech audio is enabled
         /// </summary>
         public bool EnableAudio { get; set; } = true;
+
+        /// <summary>
+        /// Audio device for output
+        /// </summary>
+        public int AudioOut { get; set; } = -2;
 
         /// <summary>
         /// Delay between steps in auto-step mode
